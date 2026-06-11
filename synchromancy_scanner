@@ -38,7 +38,6 @@ HIGHER_PREFERRED_TRADES = 12
 HIGHER_MINIMUM_TRADES = 2
 
 DAILY_ATRS = list(range(5, 21))
-DAILY_FIXED_FACTOR = 3.0
 WEEKLY_FACTORS = np.round(np.arange(1.7, 3.01, 0.1), 1)
 
 MIN_BARS_CRYPTO = 50
@@ -123,7 +122,7 @@ def get_cached_parameter(symbol, market_type, timeframe):
 def save_cached_parameter(symbol, market_type, timeframe, winner):
     """
     Important:
-    Daily cache stores selected ATR length, using fixed DAILY_FIXED_FACTOR.
+    Daily cache stores selected ATR length.
     Weekly cache stores selected fixed factor.
     """
     if timeframe in ["1w", "1M"]:
@@ -216,9 +215,10 @@ def run_cached_logic(df, timeframe, cache_row):
         st = supertrend_tv(df, factor_series, atr_len)
     else:
         atr_len = int(round(selected_parameter))
-        factor = DAILY_FIXED_FACTOR
-        factor_series = pd.Series(factor, index=df.index)
+        factor_series = daily_factor(df, atr_len)
         st = supertrend_tv(df, factor_series, atr_len)
+        factor_clean = factor_series.dropna()
+        factor = round(float(factor_clean.iloc[-1]), 2) if not factor_clean.empty else np.nan
 
     if st.empty:
         return None
@@ -1238,8 +1238,7 @@ def optimize_daily(df):
     results = []
 
     for atr_len in DAILY_ATRS:
-        factor_now = DAILY_FIXED_FACTOR
-        factor_series = pd.Series(factor_now, index=df.index)
+        factor_series = daily_factor(df, atr_len)
         st = supertrend_tv(df, factor_series, atr_len)
 
         if st.empty:
@@ -1248,6 +1247,9 @@ def optimize_daily(df):
         bt, used_trades, all_trades, valid = calculate_trade_count_return(
             st, DAILY_PREFERRED_TRADES, DAILY_MINIMUM_TRADES
         )
+
+        factor_clean = factor_series.dropna()
+        factor_now = round(float(factor_clean.iloc[-1]), 2) if not factor_clean.empty else np.nan
 
         results.append({
             "param": int(atr_len),
