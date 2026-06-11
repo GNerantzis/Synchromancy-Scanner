@@ -910,21 +910,31 @@ def to_weekly(df):
     return weekly.dropna().reset_index()
 
 
-def drop_unconfirmed_higher_tf_bar(df, timeframe):
+def drop_unconfirmed_signal_bar(df, timeframe):
     """
-    For higher timeframe mechanical scans, ignore the currently forming candle.
-    This keeps weekly/monthly trend, factor selection and flip metrics based only
-    on confirmed completed candles.
+    For mechanical scans, ignore the currently forming signal candle.
+
+    This matches the Pine visual freeze idea:
+    - Daily scans use the last confirmed daily candle.
+    - Weekly/monthly scans use the last confirmed higher-timeframe candle.
+
+    This prevents the selected Daily ATR, Weekly factor, trend state and flip metrics
+    from changing because of a still-forming candle.
     """
     if df is None or df.empty:
         return df
 
-    if timeframe in ["1w", "1M"]:
+    if timeframe in ["1d", "1w", "1M"]:
         if len(df) <= 1:
             return df.iloc[0:0].copy()
         return df.iloc[:-1].copy().reset_index(drop=True)
 
     return df
+
+
+# Backwards-compatible alias for old calls.
+def drop_unconfirmed_higher_tf_bar(df, timeframe):
+    return drop_unconfirmed_signal_bar(df, timeframe)
 
 
 # =====================================================
@@ -1367,7 +1377,7 @@ class CombinedWorker(QRunnable):
         symbol = symbol_raw.upper()
         route = get_crypto_route(symbol)
         df = fetch_crypto(route, self.timeframe, limit=1000)
-        df = drop_unconfirmed_higher_tf_bar(df, self.timeframe)
+        df = drop_unconfirmed_signal_bar(df, self.timeframe)
 
         if df is None or len(df) < MIN_BARS_CRYPTO:
             return None
@@ -1421,10 +1431,11 @@ class CombinedWorker(QRunnable):
 
         if self.timeframe == "1w":
             df = to_weekly(df)
-            df = drop_unconfirmed_higher_tf_bar(df, self.timeframe)
+            df = drop_unconfirmed_signal_bar(df, self.timeframe)
             if len(df) < MIN_BARS_WEEKLY:
                 return None
         else:
+            df = drop_unconfirmed_signal_bar(df, self.timeframe)
             if len(df) < MIN_BARS_DAILY:
                 return None
 
@@ -1476,10 +1487,11 @@ class CombinedWorker(QRunnable):
 
         if self.timeframe == "1w":
             df = to_weekly(df)
-            df = drop_unconfirmed_higher_tf_bar(df, self.timeframe)
+            df = drop_unconfirmed_signal_bar(df, self.timeframe)
             if len(df) < MIN_BARS_WEEKLY:
                 return None
         else:
+            df = drop_unconfirmed_signal_bar(df, self.timeframe)
             if len(df) < MIN_BARS_DAILY:
                 return None
 
