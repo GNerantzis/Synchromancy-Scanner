@@ -910,6 +910,23 @@ def to_weekly(df):
     return weekly.dropna().reset_index()
 
 
+def drop_unconfirmed_higher_tf_bar(df, timeframe):
+    """
+    For higher timeframe mechanical scans, ignore the currently forming candle.
+    This keeps weekly/monthly trend, factor selection and flip metrics based only
+    on confirmed completed candles.
+    """
+    if df is None or df.empty:
+        return df
+
+    if timeframe in ["1w", "1M"]:
+        if len(df) <= 1:
+            return df.iloc[0:0].copy()
+        return df.iloc[:-1].copy().reset_index(drop=True)
+
+    return df
+
+
 # =====================================================
 # INDICATORS
 # =====================================================
@@ -1350,6 +1367,7 @@ class CombinedWorker(QRunnable):
         symbol = symbol_raw.upper()
         route = get_crypto_route(symbol)
         df = fetch_crypto(route, self.timeframe, limit=1000)
+        df = drop_unconfirmed_higher_tf_bar(df, self.timeframe)
 
         if df is None or len(df) < MIN_BARS_CRYPTO:
             return None
@@ -1403,6 +1421,7 @@ class CombinedWorker(QRunnable):
 
         if self.timeframe == "1w":
             df = to_weekly(df)
+            df = drop_unconfirmed_higher_tf_bar(df, self.timeframe)
             if len(df) < MIN_BARS_WEEKLY:
                 return None
         else:
@@ -1457,6 +1476,7 @@ class CombinedWorker(QRunnable):
 
         if self.timeframe == "1w":
             df = to_weekly(df)
+            df = drop_unconfirmed_higher_tf_bar(df, self.timeframe)
             if len(df) < MIN_BARS_WEEKLY:
                 return None
         else:
