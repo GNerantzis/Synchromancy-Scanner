@@ -19,7 +19,7 @@ except Exception:
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTableWidget, QTableWidgetItem, QSpinBox, QLabel,
-    QProgressBar, QHeaderView, QTabWidget, QComboBox
+    QProgressBar, QHeaderView, QTabWidget, QComboBox, QCheckBox
 )
 from PySide6.QtCore import Qt, QRunnable, QThreadPool, Signal, QObject, QUrl
 from PySide6.QtGui import QDesktopServices
@@ -1541,12 +1541,40 @@ class NumericItem(QTableWidgetItem):
             return super().__lt__(other)
 
 
+def format_price_for_display(value):
+    try:
+        if value is None or pd.isna(value):
+            return ""
+    except Exception:
+        pass
+
+    try:
+        x = float(value)
+    except Exception:
+        return str(value)
+
+    if x == 0:
+        return "0"
+
+    if abs(x) < 0.0001:
+        return f"{x:.10f}".rstrip("0").rstrip(".")
+
+    if abs(x) < 1:
+        return f"{x:.8f}".rstrip("0").rstrip(".")
+
+    if abs(x) < 100:
+        return f"{x:.4f}".rstrip("0").rstrip(".")
+
+    return f"{x:.2f}".rstrip("0").rstrip(".")
+
+
 class ScannerTab(QWidget):
     def __init__(self, timeframe, tab_name, parent_app):
         super().__init__()
         self.timeframe = timeframe
         self.tab_name = tab_name
         self.parent_app = parent_app
+        self.dev_view = False
         self.results = []
         self.processed = 0
         self.total_tasks = 0
@@ -1611,6 +1639,10 @@ class ScannerTab(QWidget):
             self.progress.hide()
             self.status.setText(f"{self.tab_name}: done, {len(self.results)} results")
 
+    def set_dev_view(self, enabled):
+        self.dev_view = bool(enabled)
+        self.update_table()
+
     def update_table(self):
         asset_class = self.parent_app.asset_class_combo.currentText()
         metric_header = "MarketCap (M)" if asset_class in ["Crypto", "Stocks"] else "Category"
@@ -1618,7 +1650,7 @@ class ScannerTab(QWidget):
         headers = [
             "Asset", "Symbol", "Price", "Trend", "Flip Date", "Days Since Flip",
             "% Since Flip", "Winner ATR", "Winner Factor",
-            "ROI Factor/ATR", "STAB Factor/ATR", "ROI BT %", "STAB BT %",
+            "ROI Factor/ATR", "STAB Factor/ATR", "ROI BT %", "ROI %",
             "Changed", "Used Trades", "All Trades", "Valid", metric_header, "Cache Age", "Chart"
         ]
 
@@ -1650,6 +1682,8 @@ class ScannerTab(QWidget):
                 if j == 19:
                     item = QTableWidgetItem("Open")
                     item.setData(Qt.UserRole, val)
+                elif j == 2:
+                    item = NumericItem(format_price_for_display(val))
                 elif j in numeric_cols:
                     item = NumericItem(str(val))
                 else:
@@ -1669,6 +1703,10 @@ class ScannerTab(QWidget):
 
                 item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(i, j, item)
+
+        dev_cols = [7, 8, 9, 10, 11, 13, 15, 16, 18]
+        for col in dev_cols:
+            self.table.setColumnHidden(col, not self.dev_view)
 
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSortingEnabled(True)
@@ -1718,6 +1756,11 @@ class App(QMainWindow):
         self.export_button.clicked.connect(self.export_excel)
         controls.addWidget(self.export_button)
 
+        self.dev_view_cb = QCheckBox("Dev View")
+        self.dev_view_cb.setChecked(False)
+        self.dev_view_cb.toggled.connect(self.toggle_dev_view)
+        controls.addWidget(self.dev_view_cb)
+
         controls.addStretch()
         layout.addLayout(controls)
 
@@ -1731,6 +1774,10 @@ class App(QMainWindow):
         root.setLayout(layout)
         self.setCentralWidget(root)
         self.asset_class_changed("Crypto")
+
+    def toggle_dev_view(self, checked):
+        self.weekly_tab.set_dev_view(checked)
+        self.daily_tab.set_dev_view(checked)
 
     def save_current_count(self):
         asset_class = self.asset_class_combo.currentText()
